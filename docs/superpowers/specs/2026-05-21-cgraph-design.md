@@ -15,7 +15,7 @@ cgraph 是一个面向 C 语言代码库的知识图谱 CLI 工具。通过 libc
 | 类型 | 关键属性 |
 |------|----------|
 | `file` | 路径、总行数、函数数量 |
-| `function` | 名称、文件、起止行、圈复杂度、行数、扇入、扇出、是否线程入口 |
+| `function` | 名称、文件、起止行、圈复杂度、行数、扇入、扇出、是否线程入口、是否外部函数 |
 | `struct` / `union` / `enum` | 名称、文件、成员列表 |
 | `field` | 名称、类型、所属结构体 |
 | `global_var` | 名称、类型、文件、是否共享资源 |
@@ -36,8 +36,8 @@ cgraph 是一个面向 C 语言代码库的知识图谱 CLI 工具。通过 libc
 | `accesses_field` | 函数→字段 | 读/写字段（带 r/w 属性） |
 | `reads_global` | 函数→全局变量 | |
 | `writes_global` | 函数→全局变量 | |
-| `allocates` | 函数→调用点 | malloc/calloc 等 |
-| `frees` | 函数→调用点 | free 等 |
+| `allocates` | 函数→函数 | 调用 malloc/calloc 等（边属性记录调用行号，目标为外部函数节点） |
+| `frees` | 函数→函数 | 调用 free 等（边属性记录调用行号，目标为外部函数节点） |
 | `guarded_by` | 全局变量→锁 | 该资源被该锁保护 |
 | `acquires_lock` | 函数→锁 | |
 | `creates_thread` | 函数→函数 | pthread_create 等的目标 |
@@ -46,14 +46,14 @@ cgraph 是一个面向 C 语言代码库的知识图谱 CLI 工具。通过 libc
 
 ## CLI 查询指令集
 
-所有指令输出 JSON。支持通用选项 `--module <name>` 限定范围。
+所有指令输出 JSON。支持通用选项：`--module <name>` 限定范围，`--db <path>` 指定 cgraph.db 位置（默认当前目录），`--project-root <path>` 指定项目根目录（用于将相对路径映射到实际文件）。
 
 ### 基础查询
 
 | 指令 | 功能 |
 |------|------|
 | `cgraph info` | 图谱概览（文件数、函数数、类型数等统计） |
-| `cgraph list <type>` | 列出某类节点（functions/files/structs/globals/macros） |
+| `cgraph list <type>` | 列出某类节点（functions/files/structs/globals/macros/modules）。配合 `--module` 可过滤指定模块下的节点 |
 | `cgraph show <name>` | 查看某个符号的详细信息及直接关系 |
 
 ### 调用关系
@@ -118,15 +118,23 @@ cgraph 是一个面向 C 语言代码库的知识图谱 CLI 工具。通过 libc
 ## 构建流程
 
 ```
-cgraph build ./src/ [--compile-commands compile_commands.json]
+cgraph build --compile-commands compile_commands.json
 ```
 
+输入：compile_commands.json（由构建系统生成，如 CMake `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON` 或 Bear）。该文件精确定义了参与编译的翻译单元及其编译参数。
+
+输出：默认在项目目录（compile_commands.json 所在目录）生成 `cgraph.db`，可通过 `--output <path>` 指定其他路径。
+
+路径约定：图谱中所有文件路径均为相对于项目目录的相对路径，确保图谱可移植。
+
+查询定位：通过 `--project-root <path>` 指定项目根目录。指定时，输出 JSON 中的文件路径为拼接后的绝对路径；不指定时，输出图谱中存储的相对路径。
+
 步骤：
-1. 查找所有 .c / .h 文件
-2. 通过 libclang 逐文件解析 AST（使用 compile_commands.json 获取编译参数）
+1. 解析 compile_commands.json，获取所有参与编译的 .c 文件及其编译参数
+2. 通过 libclang 逐文件解析 AST（头文件通过 #include 关系自动纳入）
 3. 遍历 AST 提取节点和关系，写入内存图
 4. 计算派生属性（圈复杂度、扇入扇出、模块归属）
-5. 序列化到 .cgraph 二进制文件
+5. 序列化到 cgraph.db 二进制文件
 
 ## 内部架构
 
