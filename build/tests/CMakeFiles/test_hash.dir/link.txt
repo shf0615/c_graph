@@ -1,0 +1,1 @@
+/usr/bin/cc -g CMakeFiles/test_hash.dir/test_hash.c.o -o test_hash  -Wl,-rpath,/usr/lib/llvm-18/lib ../src/libcgraph_lib.a libunity.a /usr/lib/llvm-18/lib/libclang.so 

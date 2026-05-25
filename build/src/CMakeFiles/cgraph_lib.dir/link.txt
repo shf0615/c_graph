@@ -1,0 +1,2 @@
+/usr/bin/ar qc libcgraph_lib.a CMakeFiles/cgraph_lib.dir/util/arena.c.o CMakeFiles/cgraph_lib.dir/util/hash.c.o CMakeFiles/cgraph_lib.dir/graph/graph.c.o CMakeFiles/cgraph_lib.dir/graph/serialize.c.o CMakeFiles/cgraph_lib.dir/parse/compdb.c.o CMakeFiles/cgraph_lib.dir/parse/parser.c.o
+/usr/bin/ranlib libcgraph_lib.a

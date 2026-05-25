@@ -1,0 +1,4 @@
+[
+  {"directory": "/home/shf/workspace-ai/new_work_521/c_graph/tests/fixtures/sample_project", "file": "main.c", "command": "cc -I. -c main.c -o main.o"},
+  {"directory": "/home/shf/workspace-ai/new_work_521/c_graph/tests/fixtures/sample_project", "file": "util.c", "command": "cc -I. -c util.c -o util.o"}
+]

@@ -1,0 +1,1 @@
+/usr/bin/cc -g CMakeFiles/test_graph.dir/test_graph.c.o -o test_graph  -Wl,-rpath,/usr/lib/llvm-18/lib ../src/libcgraph_lib.a libunity.a /usr/lib/llvm-18/lib/libclang.so 

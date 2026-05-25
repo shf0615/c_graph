@@ -1,0 +1,1 @@
+/usr/bin/cc -g CMakeFiles/cgraph.dir/main.c.o -o cgraph  -Wl,-rpath,/usr/lib/llvm-18/lib libcgraph_lib.a /usr/lib/llvm-18/lib/libclang.so 

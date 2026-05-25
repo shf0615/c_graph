@@ -20,3 +20,17 @@ add_executable(test_serialize test_serialize.c)
 target_link_libraries(test_serialize PRIVATE cgraph_lib unity)
 target_include_directories(test_serialize PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME test_serialize COMMAND test_serialize)
+
+set(FIXTURE_PATH "${CMAKE_SOURCE_DIR}/tests/fixtures")
+
+add_executable(test_compdb test_compdb.c)
+target_link_libraries(test_compdb PRIVATE cgraph_lib unity)
+target_include_directories(test_compdb PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_definitions(test_compdb PRIVATE FIXTURE_PATH="${FIXTURE_PATH}")
+add_test(NAME test_compdb COMMAND test_compdb)
+
+add_executable(test_parser test_parser.c)
+target_link_libraries(test_parser PRIVATE cgraph_lib unity)
+target_include_directories(test_parser PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_definitions(test_parser PRIVATE FIXTURE_PATH="${FIXTURE_PATH}")
+add_test(NAME test_parser COMMAND test_parser)
