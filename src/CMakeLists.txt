@@ -9,7 +9,9 @@ add_library(cgraph_lib STATIC
     query/traverse.c
     query/impact.c
     query/quality.c
+    query/concurrency.c
     export/json.c
+    export/html.c
 )
 target_include_directories(cgraph_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}

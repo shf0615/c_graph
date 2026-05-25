@@ -9,7 +9,9 @@
 #include "query/traverse.h"
 #include "query/impact.h"
 #include "query/quality.h"
+#include "query/concurrency.h"
 #include "export/json.h"
+#include "export/html.h"
 
 typedef struct {
     const char *db_path;
@@ -284,6 +286,45 @@ static int cmd_large_functions(int argc, char **argv, CliOptions *opts) {
     return 0;
 }
 
+static int cmd_threads(int argc, char **argv, CliOptions *opts) {
+    Graph g;
+    if (!load_graph(&g, opts->db_path)) return 1;
+    QueryResult r = query_threads(&g);
+    JsonOptions jo = {.project_root = opts->project_root};
+    char *json = json_format_query_result(&g, &r, &jo);
+    puts(json);
+    free(json);
+    free(r.node_ids);
+    graph_destroy(&g);
+    return 0;
+}
+
+static int cmd_shared_resources(int argc, char **argv, CliOptions *opts) {
+    Graph g;
+    if (!load_graph(&g, opts->db_path)) return 1;
+    QueryResult r = query_shared_resources(&g);
+    JsonOptions jo = {.project_root = opts->project_root};
+    char *json = json_format_query_result(&g, &r, &jo);
+    puts(json);
+    free(json);
+    free(r.node_ids);
+    graph_destroy(&g);
+    return 0;
+}
+
+static int cmd_data_race_suspects(int argc, char **argv, CliOptions *opts) {
+    Graph g;
+    if (!load_graph(&g, opts->db_path)) return 1;
+    QueryResult r = query_data_race_suspects(&g);
+    JsonOptions jo = {.project_root = opts->project_root};
+    char *json = json_format_query_result(&g, &r, &jo);
+    puts(json);
+    free(json);
+    free(r.node_ids);
+    graph_destroy(&g);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
         fprintf(stderr, "Usage: cgraph <command> [options]\n");
@@ -311,6 +352,21 @@ int main(int argc, char **argv) {
     if (strcmp(cmd, "coupling") == 0) return cmd_coupling(sub_argc, sub_argv, &opts);
     if (strcmp(cmd, "dead-code") == 0) return cmd_dead_code(sub_argc, sub_argv, &opts);
     if (strcmp(cmd, "large-functions") == 0) return cmd_large_functions(sub_argc, sub_argv, &opts);
+    if (strcmp(cmd, "threads") == 0) return cmd_threads(sub_argc, sub_argv, &opts);
+    if (strcmp(cmd, "shared-resources") == 0) return cmd_shared_resources(sub_argc, sub_argv, &opts);
+    if (strcmp(cmd, "data-race-suspects") == 0) return cmd_data_race_suspects(sub_argc, sub_argv, &opts);
+    if (strcmp(cmd, "export-html") == 0) {
+        const char *outdir = "./cgraph-html";
+        for (int i = 0; i < sub_argc; i++) {
+            if (strcmp(sub_argv[i], "--output") == 0 && i + 1 < sub_argc) outdir = sub_argv[++i];
+        }
+        Graph g;
+        if (!load_graph(&g, opts.db_path)) return 1;
+        if (!html_export(&g, outdir)) { fprintf(stderr, "Error exporting HTML\n"); graph_destroy(&g); return 1; }
+        fprintf(stderr, "Exported to %s/\n", outdir);
+        graph_destroy(&g);
+        return 0;
+    }
 
     fprintf(stderr, "Unknown command: %s\n", cmd);
     return 1;
