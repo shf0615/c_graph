@@ -5,7 +5,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
-static const char *HTML_TEMPLATE =
+static const char *HTML_HEAD =
 "<!DOCTYPE html>\n"
 "<html><head><meta charset=\"utf-8\">\n"
 "<title>cgraph - Code Knowledge Graph</title>\n"
@@ -31,10 +31,11 @@ static const char *HTML_TEMPLATE =
 "<input type=\"text\" id=\"search\" placeholder=\"Search functions...\">\n"
 "<svg id=\"graph\"></svg>\n"
 "<h2>Functions</h2>\n"
-"<table id=\"functions\"><thead><tr><th>Name</th><th>File</th><th>Lines</th><th>Fan-in</th><th>Fan-out</th></tr></thead><tbody></tbody></table>\n"
-"<script src=\"https://d3js.org/d3.v7.min.js\"></script>\n"
+"<table id=\"functions\"><thead><tr><th>Name</th><th>File</th><th>Lines</th><th>Fan-in</th><th>Fan-out</th></tr></thead><tbody></tbody></table>\n";
+
+static const char *HTML_TAIL =
 "<script>\n"
-"fetch('data.json').then(r=>r.json()).then(data => {\n"
+"(function() {\n"
 "  // Stats\n"
 "  const stats = document.getElementById('stats');\n"
 "  stats.innerHTML = `\n"
@@ -65,7 +66,7 @@ static const char *HTML_TEMPLATE =
 "  const callEdges = data.edges.filter(e=>e.type==='calls'||e.type==='calls_fp');\n"
 "  const nodeSet = new Set();\n"
 "  callEdges.forEach(e=>{nodeSet.add(e.from);nodeSet.add(e.to);});\n"
-"  const graphNodes = data.nodes.filter(n=>nodeSet.has(n.id)).map(n=>({...n}));\n"
+"  const graphNodes = data.nodes.filter(n=>nodeSet.has(n.id)&&!n.is_external).map(n=>({...n}));\n"
 "  const nodeMap = new Map(graphNodes.map(n=>[n.id, n]));\n"
 "  const links = callEdges.filter(e=>nodeMap.has(e.from)&&nodeMap.has(e.to)).map(e=>({source:e.from,target:e.to}));\n"
 "  const sim = d3.forceSimulation(graphNodes)\n"
@@ -84,7 +85,7 @@ static const char *HTML_TEMPLATE =
 "    node.attr('cx',d=>d.x).attr('cy',d=>d.y);\n"
 "    label.attr('x',d=>d.x).attr('y',d=>d.y);\n"
 "  });\n"
-"});\n"
+"})();\n"
 "</script></body></html>\n";
 
 static const char *edge_type_str(EdgeType t) {
@@ -155,12 +156,69 @@ bool html_export(const Graph *g, const char *output_dir) {
     mkdir(output_dir, 0755);
 
     char path[2048];
+
+    /* Write data.json (still useful for external tools) */
+    snprintf(path, sizeof(path), "%s/data.json", output_dir);
+    write_data_json(g, path);
+
+    /* Write index.html with inline data and D3.js */
     snprintf(path, sizeof(path), "%s/index.html", output_dir);
     FILE *f = fopen(path, "w");
     if (!f) return false;
-    fputs(HTML_TEMPLATE, f);
-    fclose(f);
 
-    snprintf(path, sizeof(path), "%s/data.json", output_dir);
-    return write_data_json(g, path);
+    /* HTML head */
+    fputs(HTML_HEAD, f);
+
+    /* Inline data as JS variable */
+    fprintf(f, "<script>\nconst data = ");
+    fprintf(f, "{\"nodes\":[\n");
+    for (uint32_t i = 0; i < g->node_count; i++) {
+        const Node *n = &g->nodes[i];
+        if (i > 0) fprintf(f, ",\n");
+        fprintf(f, "  {\"id\":%u,\"name\":\"%s\",\"type\":\"%s\",\"file\":\"%s\","
+                   "\"line_start\":%u,\"line_end\":%u,\"fan_in\":%u,\"fan_out\":%u,"
+                   "\"is_external\":%s}",
+                n->id, n->name, node_type_str_html(n->type), n->file ? n->file : "",
+                n->line_start, n->line_end, n->fan_in, n->fan_out,
+                n->is_external ? "true" : "false");
+    }
+    fprintf(f, "\n],\"edges\":[\n");
+    for (uint32_t i = 0; i < g->edge_count; i++) {
+        const Edge *e = &g->edges[i];
+        if (i > 0) fprintf(f, ",\n");
+        fprintf(f, "  {\"from\":%u,\"to\":%u,\"type\":\"%s\"}", e->from, e->to, edge_type_str(e->type));
+    }
+    fprintf(f, "\n]};\n</script>\n");
+
+    /* Inline D3.js - try to read from known locations */
+    fprintf(f, "<script>\n");
+    FILE *d3f = NULL;
+    const char *d3_paths[] = {
+        "/tmp/d3.v7.min.js",
+        "/usr/share/cgraph/d3.v7.min.js",
+        "./d3.v7.min.js",
+        NULL
+    };
+    for (const char **p = d3_paths; *p; p++) {
+        d3f = fopen(*p, "r");
+        if (d3f) break;
+    }
+    if (d3f) {
+        char buf[4096];
+        size_t n;
+        while ((n = fread(buf, 1, sizeof(buf), d3f)) > 0) {
+            fwrite(buf, 1, n, f);
+        }
+        fclose(d3f);
+    } else {
+        /* Fallback: CDN reference (won't work with file://) */
+        fprintf(f, "// D3.js not found locally, loading from CDN\n");
+        fprintf(f, "</script>\n<script src=\"https://d3js.org/d3.v7.min.js\"></script>\n<script>\n");
+    }
+    fprintf(f, "\n</script>\n");
+
+    /* App script */
+    fputs(HTML_TAIL, f);
+    fclose(f);
+    return true;
 }
