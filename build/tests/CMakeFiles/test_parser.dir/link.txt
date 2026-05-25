@@ -1,1 +1,0 @@
-/usr/bin/cc -g CMakeFiles/test_parser.dir/test_parser.c.o -o test_parser  -Wl,-rpath,/usr/lib/llvm-18/lib ../src/libcgraph_lib.a libunity.a /usr/lib/llvm-18/lib/libclang.so 

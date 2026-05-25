@@ -1,7 +1,0 @@
-test_arena 1 0.00218654
-test_hash 1 0.00119724
-test_graph 1 0.00103213
-test_serialize 1 0.00115767
-test_compdb 1 0.00110674
-test_parser 1 0.0457528
----

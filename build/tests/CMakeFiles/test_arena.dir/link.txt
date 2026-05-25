@@ -1,1 +1,0 @@
-/usr/bin/cc -g CMakeFiles/test_arena.dir/test_arena.c.o -o test_arena  -Wl,-rpath,/usr/lib/llvm-18/lib ../src/libcgraph_lib.a libunity.a /usr/lib/llvm-18/lib/libclang.so 

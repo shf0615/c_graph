@@ -1,1 +1,0 @@
-/usr/bin/cc -g CMakeFiles/test_compdb.dir/test_compdb.c.o -o test_compdb  -Wl,-rpath,/usr/lib/llvm-18/lib ../src/libcgraph_lib.a libunity.a /usr/lib/llvm-18/lib/libclang.so 
