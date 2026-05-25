@@ -34,3 +34,8 @@ target_link_libraries(test_parser PRIVATE cgraph_lib unity)
 target_include_directories(test_parser PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_compile_definitions(test_parser PRIVATE FIXTURE_PATH="${FIXTURE_PATH}")
 add_test(NAME test_parser COMMAND test_parser)
+
+add_executable(test_query test_query.c)
+target_link_libraries(test_query PRIVATE cgraph_lib unity)
+target_include_directories(test_query PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME test_query COMMAND test_query)
