@@ -10,6 +10,9 @@
 #include "query/impact.h"
 #include "query/quality.h"
 #include "query/concurrency.h"
+#include "query/perf.h"
+#include "query/platform.h"
+#include "query/lockorder.h"
 #include "export/json.h"
 #include "export/html.h"
 
@@ -355,6 +358,86 @@ int main(int argc, char **argv) {
     if (strcmp(cmd, "threads") == 0) return cmd_threads(sub_argc, sub_argv, &opts);
     if (strcmp(cmd, "shared-resources") == 0) return cmd_shared_resources(sub_argc, sub_argv, &opts);
     if (strcmp(cmd, "data-race-suspects") == 0) return cmd_data_race_suspects(sub_argc, sub_argv, &opts);
+    if (strcmp(cmd, "lock-order") == 0) {
+        Graph g;
+        if (!load_graph(&g, opts.db_path)) return 1;
+        LockOrderResult r = query_lock_order(&g);
+        printf("{\"has_cycle\": %s, \"pairs\": [\n", r.has_cycle ? "true" : "false");
+        for (uint32_t i = 0; i < r.count; i++) {
+            if (i > 0) printf(",\n");
+            printf("  {\"lock_a\": \"%s\", \"lock_b\": \"%s\", \"function\": \"%s\"}",
+                   g.nodes[r.pairs[i].lock_a].name,
+                   g.nodes[r.pairs[i].lock_b].name,
+                   g.nodes[r.pairs[i].func_id].name);
+        }
+        printf("\n]}\n");
+        lock_order_result_free(&r);
+        graph_destroy(&g);
+        return 0;
+    }
+    if (strcmp(cmd, "alloc-sites") == 0) {
+        Graph g;
+        if (!load_graph(&g, opts.db_path)) return 1;
+        const char *func = find_arg(sub_argc, sub_argv, 0);
+        QueryResult r = query_alloc_sites(&g, func);
+        JsonOptions jo = {.project_root = opts.project_root};
+        char *json = json_format_query_result(&g, &r, &jo);
+        puts(json); free(json); free(r.node_ids);
+        graph_destroy(&g); return 0;
+    }
+    if (strcmp(cmd, "alloc-pairs") == 0) {
+        Graph g;
+        if (!load_graph(&g, opts.db_path)) return 1;
+        QueryResult r = query_alloc_pairs(&g);
+        JsonOptions jo = {.project_root = opts.project_root};
+        char *json = json_format_query_result(&g, &r, &jo);
+        puts(json); free(json); free(r.node_ids);
+        graph_destroy(&g); return 0;
+    }
+    if (strcmp(cmd, "hotpath") == 0) {
+        const char *name = find_arg(sub_argc, sub_argv, 0);
+        if (!name) { fprintf(stderr, "Usage: cgraph hotpath <entry>\n"); return 1; }
+        Graph g;
+        if (!load_graph(&g, opts.db_path)) return 1;
+        uint32_t id;
+        if (!graph_find_node(&g, name, &id)) { fprintf(stderr, "Symbol not found: %s\n", name); graph_destroy(&g); return 1; }
+        QueryResult r = query_hotpath(&g, id, opts.depth);
+        JsonOptions jo = {.project_root = opts.project_root};
+        char *json = json_format_query_result(&g, &r, &jo);
+        puts(json); free(json); query_result_free(&r);
+        graph_destroy(&g); return 0;
+    }
+    if (strcmp(cmd, "platform-deps") == 0) {
+        Graph g;
+        if (!load_graph(&g, opts.db_path)) return 1;
+        const char *macro = NULL;
+        for (int i = 0; i < sub_argc; i++) {
+            if (strcmp(sub_argv[i], "--ifdef") == 0 && i + 1 < sub_argc) macro = sub_argv[++i];
+        }
+        QueryResult r = query_platform_deps(&g, macro);
+        JsonOptions jo = {.project_root = opts.project_root};
+        char *json = json_format_query_result(&g, &r, &jo);
+        puts(json); free(json); free(r.node_ids);
+        graph_destroy(&g); return 0;
+    }
+    if (strcmp(cmd, "syscalls") == 0) {
+        Graph g;
+        if (!load_graph(&g, opts.db_path)) return 1;
+        QueryResult r = query_syscalls(&g);
+        JsonOptions jo = {.project_root = opts.project_root};
+        char *json = json_format_query_result(&g, &r, &jo);
+        puts(json); free(json); free(r.node_ids);
+        graph_destroy(&g); return 0;
+    }
+    if (strcmp(cmd, "compiler-builtins") == 0) {
+        Graph g;
+        if (!load_graph(&g, opts.db_path)) return 1;
+        QueryResult r = query_compiler_builtins(&g);
+        JsonOptions jo = {.project_root = opts.project_root};
+        char *json = json_format_query_result(&g, &r, &jo);
+        puts(json); free(json); free(r.node_ids);
+        graph_destroy(&g); return 0;
+    }
     if (strcmp(cmd, "export-html") == 0) {
         const char *outdir = "./cgraph-html";
         for (int i = 0; i < sub_argc; i++) {

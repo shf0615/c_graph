@@ -10,6 +10,9 @@ add_library(cgraph_lib STATIC
     query/impact.c
     query/quality.c
     query/concurrency.c
+    query/perf.c
+    query/platform.c
+    query/lockorder.c
     export/json.c
     export/html.c
 )

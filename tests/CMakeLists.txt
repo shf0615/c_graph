@@ -44,3 +44,8 @@ add_executable(test_concurrency test_concurrency.c)
 target_link_libraries(test_concurrency PRIVATE cgraph_lib unity)
 target_include_directories(test_concurrency PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME test_concurrency COMMAND test_concurrency)
+
+add_executable(test_advanced test_advanced.c)
+target_link_libraries(test_advanced PRIVATE cgraph_lib unity)
+target_include_directories(test_advanced PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME test_advanced COMMAND test_advanced)

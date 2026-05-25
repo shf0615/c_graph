@@ -9,6 +9,7 @@ typedef struct {
     bool in_function;
     uint32_t funcs_found;
     uint32_t calls_found;
+    uint32_t complexity;  /* running complexity count for current function */
     const char *base_dir;
 } VisitorCtx;
 
@@ -64,6 +65,29 @@ static uint32_t ensure_func_node(Graph *g, CXCursor cursor, const char *base_dir
     return id;
 }
 
+static bool is_alloc_func(const char *name) {
+    return strcmp(name, "malloc") == 0 || strcmp(name, "calloc") == 0 ||
+           strcmp(name, "realloc") == 0 || strcmp(name, "aligned_alloc") == 0;
+}
+
+static bool is_free_func(const char *name) {
+    return strcmp(name, "free") == 0;
+}
+
+static bool is_thread_create_func(const char *name) {
+    return strcmp(name, "pthread_create") == 0 ||
+           strcmp(name, "xTaskCreate") == 0 ||
+           strcmp(name, "osThreadNew") == 0;
+}
+
+static bool is_lock_func(const char *name) {
+    return strstr(name, "mutex_lock") != NULL ||
+           strstr(name, "spin_lock") != NULL ||
+           strstr(name, "sem_wait") != NULL ||
+           strcmp(name, "pthread_mutex_lock") == 0 ||
+           strcmp(name, "xSemaphoreTake") == 0;
+}
+
 static enum CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClientData data) {
     VisitorCtx *ctx = (VisitorCtx *)data;
     enum CXCursorKind kind = clang_getCursorKind(cursor);
@@ -72,19 +96,89 @@ static enum CXChildVisitResult visitor(CXCursor cursor, CXCursor parent, CXClien
         ctx->current_func_id = ensure_func_node(ctx->graph, cursor, ctx->base_dir);
         if (ctx->current_func_id == UINT32_MAX) return CXChildVisit_Continue;
         ctx->in_function = true;
+        ctx->complexity = 1; /* base complexity */
         ctx->funcs_found++;
         clang_visitChildren(cursor, visitor, data);
+        ctx->graph->nodes[ctx->current_func_id].cyclomatic_complexity = ctx->complexity;
         ctx->in_function = false;
         return CXChildVisit_Continue;
     }
 
-    if (kind == CXCursor_CallExpr && ctx->in_function) {
+    if (!ctx->in_function) return CXChildVisit_Recurse;
+
+    /* Complexity: count decision points */
+    switch (kind) {
+        case CXCursor_IfStmt:
+        case CXCursor_ForStmt:
+        case CXCursor_WhileStmt:
+        case CXCursor_DoStmt:
+        case CXCursor_CaseStmt:
+        case CXCursor_ConditionalOperator: /* ternary */
+            ctx->complexity++;
+            break;
+        case CXCursor_BinaryOperator: {
+            /* Count && and || as decision points */
+            CXString tok = clang_getCursorSpelling(cursor);
+            const char *s = clang_getCString(tok);
+            if (s && (strcmp(s, "&&") == 0 || strcmp(s, "||") == 0))
+                ctx->complexity++;
+            clang_disposeString(tok);
+            break;
+        }
+        default:
+            break;
+    }
+
+    /* Call expressions */
+    if (kind == CXCursor_CallExpr) {
         CXCursor callee = clang_getCursorReferenced(cursor);
         if (!clang_Cursor_isNull(callee) && clang_getCursorKind(callee) == CXCursor_FunctionDecl) {
+            CXString callee_name = clang_getCursorSpelling(callee);
+            const char *cname = clang_getCString(callee_name);
+
             uint32_t callee_id = ensure_func_node(ctx->graph, callee, ctx->base_dir);
             if (callee_id != UINT32_MAX) {
-                graph_add_edge(ctx->graph, ctx->current_func_id, callee_id, EDGE_CALLS, 0);
+                if (is_alloc_func(cname)) {
+                    graph_add_edge(ctx->graph, ctx->current_func_id, callee_id, EDGE_ALLOCATES, 0);
+                } else if (is_free_func(cname)) {
+                    graph_add_edge(ctx->graph, ctx->current_func_id, callee_id, EDGE_FREES, 0);
+                } else if (is_lock_func(cname)) {
+                    graph_add_edge(ctx->graph, ctx->current_func_id, callee_id, EDGE_ACQUIRES_LOCK, 0);
+                } else if (is_thread_create_func(cname)) {
+                    graph_add_edge(ctx->graph, ctx->current_func_id, callee_id, EDGE_CREATES_THREAD, 0);
+                } else {
+                    graph_add_edge(ctx->graph, ctx->current_func_id, callee_id, EDGE_CALLS, 0);
+                }
                 ctx->calls_found++;
+            }
+            clang_disposeString(callee_name);
+        }
+    }
+
+    /* Global variable references */
+    if (kind == CXCursor_DeclRefExpr) {
+        CXCursor ref = clang_getCursorReferenced(cursor);
+        if (!clang_Cursor_isNull(ref) && clang_getCursorKind(ref) == CXCursor_VarDecl) {
+            enum CXLinkageKind linkage = clang_getCursorLinkage(ref);
+            if (linkage == CXLinkage_External || linkage == CXLinkage_Internal) {
+                /* Check if file-scope (not local) */
+                CXCursor semantic_parent = clang_getCursorSemanticParent(ref);
+                if (clang_getCursorKind(semantic_parent) == CXCursor_TranslationUnit) {
+                    CXString var_name = clang_getCursorSpelling(ref);
+                    const char *vname = clang_getCString(var_name);
+                    if (vname && vname[0]) {
+                        uint32_t var_id;
+                        if (!graph_find_node(ctx->graph, vname, &var_id)) {
+                            var_id = graph_add_node(ctx->graph, NODE_GLOBAL_VAR, vname, NULL, 0, 0);
+                            if (linkage == CXLinkage_External)
+                                ctx->graph->nodes[var_id].is_shared = true;
+                        }
+                        /* Determine read vs write based on parent context */
+                        /* Simplified: treat all as reads, writes detected via assignment parent */
+                        graph_add_edge(ctx->graph, ctx->current_func_id, var_id, EDGE_READS_GLOBAL, 0);
+                    }
+                    clang_disposeString(var_name);
+                }
             }
         }
     }
