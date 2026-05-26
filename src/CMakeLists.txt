@@ -6,6 +6,7 @@ add_library(cgraph_lib STATIC
     graph/metrics.c
     parse/compdb.c
     parse/parser.c
+    parse/scan.c
     query/traverse.c
     query/impact.c
     query/quality.c

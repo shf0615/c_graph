@@ -18,10 +18,16 @@ CGRAPH=/home/shf/workspace-ai/new_work_521/c_graph/build/src/cgraph
 项目目录下需存在 `cgraph.db`。如果没有，先构建：
 
 ```bash
-# 1. 确保项目有 compile_commands.json（CMake: -DCMAKE_EXPORT_COMPILE_COMMANDS=ON，或用 bear）
-# 2. 构建图谱
+# 方式一（推荐）：有 compile_commands.json 时使用，解析精度最高
+# 确保项目有 compile_commands.json（CMake: -DCMAKE_EXPORT_COMPILE_COMMANDS=ON，或用 bear）
 $CGRAPH build --compile-commands <project>/compile_commands.json --output <project>/cgraph.db
+
+# 方式二：无 compile_commands.json 时，直接扫描项目目录
+# 自动递归收集所有 .c 文件，自动发现含 .h 的目录作为 include 路径
+$CGRAPH build --src-dir <project> --output <project>/cgraph.db
 ```
+
+**选择建议：** 优先使用方式一（compile_commands.json），它包含完整的编译参数（宏定义、include 路径、编译选项），解析结果更准确。方式二适用于没有构建系统或快速分析的场景，可能因缺少宏定义导致部分条件编译代码未被解析。
 
 ## 通用选项
 

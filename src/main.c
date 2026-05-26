@@ -6,6 +6,7 @@
 #include "graph/metrics.h"
 #include "parse/compdb.h"
 #include "parse/parser.h"
+#include "parse/scan.h"
 #include "query/traverse.h"
 #include "query/impact.h"
 #include "query/quality.h"
@@ -62,40 +63,77 @@ static bool load_graph(Graph *g, const char *path) {
 }
 
 static int cmd_build(int argc, char **argv) {
-    const char *compdb_path = "compile_commands.json";
+    const char *compdb_path = NULL;
+    const char *src_dir = NULL;
     const char *output = "cgraph.db";
     for (int i = 0; i < argc; i++) {
         if (strcmp(argv[i], "--compile-commands") == 0 && i + 1 < argc) compdb_path = argv[++i];
+        else if (strcmp(argv[i], "--src-dir") == 0 && i + 1 < argc) src_dir = argv[++i];
         else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) output = argv[++i];
     }
 
-    CompDB compdb;
-    if (!compdb_parse(&compdb, compdb_path)) {
-        fprintf(stderr, "Error: cannot parse %s\n", compdb_path);
+    if (!compdb_path && !src_dir) {
+        fprintf(stderr, "Error: provide --compile-commands or --src-dir\n");
         return 1;
     }
-    fprintf(stderr, "Parsing %u translation units...\n", compdb.count);
 
     Graph g;
     graph_init(&g);
-    ParseResult r = parser_parse_project(&g, &compdb);
-    if (!r.success) {
-        fprintf(stderr, "Warning: %s\n", r.error);
-    }
-    metrics_compute_fan(&g);
 
-    fprintf(stderr, "Found %u functions, %u call edges\n", r.functions_found, r.calls_found);
+    if (compdb_path) {
+        CompDB compdb;
+        if (!compdb_parse(&compdb, compdb_path)) {
+            fprintf(stderr, "Error: cannot parse %s\n", compdb_path);
+            graph_destroy(&g);
+            return 1;
+        }
+        fprintf(stderr, "Parsing %u translation units...\n", compdb.count);
+        ParseResult r = parser_parse_project(&g, &compdb);
+        if (!r.success) fprintf(stderr, "Warning: %s\n", r.error);
+        fprintf(stderr, "Found %u functions, %u call edges\n", r.functions_found, r.calls_found);
+        compdb_destroy(&compdb);
+    } else {
+        ScanResult sr;
+        if (!scan_directory(&sr, src_dir)) {
+            fprintf(stderr, "Error: cannot scan directory %s\n", src_dir);
+            graph_destroy(&g);
+            return 1;
+        }
+        fprintf(stderr, "Scanning %u .c files from %s\n", sr.file_count, src_dir);
+
+        uint32_t arg_count = sr.include_count * 2;
+        const char **parse_args = malloc((arg_count + 1) * sizeof(const char *));
+        uint32_t idx = 0;
+        for (uint32_t i = 0; i < sr.include_count; i++) {
+            parse_args[idx++] = "-I";
+            parse_args[idx++] = sr.includes[i];
+        }
+        parse_args[idx] = NULL;
+
+        uint32_t total_funcs = 0, total_calls = 0;
+        for (uint32_t i = 0; i < sr.file_count; i++) {
+            ParseResult r = parser_parse_file(&g, sr.files[i], parse_args);
+            if (!r.success) {
+                fprintf(stderr, "Warning: %s: %s\n", sr.files[i], r.error);
+            }
+            total_funcs += r.functions_found;
+            total_calls += r.calls_found;
+        }
+        fprintf(stderr, "Found %u functions, %u call edges\n", total_funcs, total_calls);
+        free(parse_args);
+        scan_result_destroy(&sr);
+    }
+
+    metrics_compute_fan(&g);
     fprintf(stderr, "Graph: %u nodes, %u edges\n", g.node_count, g.edge_count);
 
     if (!graph_serialize(&g, output)) {
         fprintf(stderr, "Error: cannot write %s\n", output);
         graph_destroy(&g);
-        compdb_destroy(&compdb);
         return 1;
     }
     fprintf(stderr, "Written: %s\n", output);
     graph_destroy(&g);
-    compdb_destroy(&compdb);
     return 0;
 }
 
